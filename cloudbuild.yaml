@@ -1,0 +1,124 @@
+# cloudbuild.yaml - Cloud Build configuration for MovieLens Recommender Backend
+
+steps:
+  # 1. Build the Docker image for the backend API
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-image'
+    args:
+      [
+        'build',
+        '-t',
+        '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:$COMMIT_SHA', # Tag with Artifact Registry path and commit SHA
+        '-t',
+        '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest',      # Also tag as latest
+        '--file=backend/Dockerfile', # Specify the Dockerfile location
+        '.',                         # Build context is the root of the repo
+      ]
+    # Add timeout if builds take longer
+    # timeout: '1200s'
+
+  # 2. Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-image'
+    args:
+      [
+        'push',
+        '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:$COMMIT_SHA',
+      ]
+    waitFor: ['build-image'] # Wait for build step to complete
+
+  # 3. Push the 'latest' tag (optional but common)
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-latest-tag'
+    args:
+      [
+        'push',
+        '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest',
+      ]
+    waitFor: ['push-image'] # Wait for SHA tag push
+
+  # 4. Deploy the image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-cloud-run'
+    entrypoint: gcloud
+    args:
+      [
+        'run',
+        'deploy',
+        '${_SERVICE_NAME}', # Cloud Run service name (substitution)
+        '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:$COMMIT_SHA', # Deploy specific SHA
+        '--region=${_REGION}',
+        '--platform=managed',
+        '--quiet', # Suppress interactive prompts
+
+        # --- Service Configuration (Match project spec) ---
+        '--min-instances=0',
+        '--max-instances=2',
+        '--memory=512MiB',
+        '--cpu=1',
+        '--timeout=60s', # Request timeout
+        '--concurrency=50',
+
+        # --- Service Account ---
+        '--service-account=${_SERVICE_ACCOUNT}', # Service account for Cloud Run instance
+
+        # --- Secrets ---
+        # Map Secret Manager secrets to environment variables
+        # Format: ENV_VAR_NAME=secret-name:version (use 'latest' for latest version)
+        # Ensure the Cloud Build service account has Secret Manager Secret Accessor role
+        # Ensure the Cloud Run service account ALSO has Secret Manager Secret Accessor role
+        '--update-secrets=MONGODB_URI=${_SECRET_MONGO_URI}:latest',
+        '--update-secrets=REDIS_URL=${_SECRET_REDIS_URL}:latest',
+        '--update-secrets=SUPABASE_JWT_SECRET=${_SECRET_SUPABASE_JWT}:latest',
+        '--update-secrets=SUPABASE_SERVICE_ROLE_KEY=${_SECRET_SUPABASE_SVC_KEY}:latest',
+        # Add other secrets as needed (e.g., GCS bucket name if secret)
+
+        # --- Environment Variables (Non-Secret) ---
+        # Format: KEY1=value1,KEY2=value2,...
+        '--set-env-vars=^##^LOG_LEVEL=${_LOG_LEVEL}##SUPABASE_URL=${_SUPABASE_URL}##HF_MODEL_NAME=${_HF_MODEL_NAME}##GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}##JWT_ALGORITHM=HS256##JWT_AUDIENCE=authenticated',
+        # Using ^##^ as delimiter for set-env-vars
+
+        # --- Networking / Access ---
+        # Allow unauthenticated access if frontend calls directly (adjust as needed)
+        '--allow-unauthenticated',
+        # Or use '--no-allow-unauthenticated' and configure IAM/IAP
+
+        # Optional: VPC Connector for accessing private resources (e.g., internal Redis/DB)
+        # '--vpc-connector=projects/${PROJECT_ID}/locations/${_REGION}/connectors/your-connector-name',
+        # '--vpc-egress=all-traffic', # Or 'private-ranges-only'
+      ]
+    waitFor: ['push-latest-tag'] # Wait for image push to complete
+
+# List images that are built by this pipeline (used for artifact tracking)
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:$COMMIT_SHA'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY # Send logs directly to Cloud Logging
+  # Optional: Specify machine type if needed (e.g., for faster builds)
+  # machineType: 'e2-medium'
+
+# Substitutions - Define variables used in the steps above
+# These can be overridden by Trigger settings
+substitutions:
+  _SERVICE_NAME: 'movielens-rec-api' # Your Cloud Run service name
+  _REGION: 'us-central1'             # GCP region for Cloud Run and Artifact Registry
+  _AR_REPO: 'movielens-backend' # Your Artifact Registry repository name
+  _IMAGE_NAME: 'movielens-rec-api'   # Name for the Docker image
+  _SERVICE_ACCOUNT: 'your-cloud-run-service-account@${PROJECT_ID}.iam.gserviceaccount.com' # Service account email for Cloud Run instance
+  _LOG_LEVEL: 'INFO'                 # Log level for the application
+  _SUPABASE_URL: 'https://your-project-ref.supabase.co' # Your Supabase project URL
+  _HF_MODEL_NAME: 'sentence-transformers/all-MiniLM-L6-v2' # HF model
+  _GCS_BUCKET_NAME: 'your-movielens-data-bucket' # GCS bucket name (can also be a secret)
+
+  # --- Secret Names (in Secret Manager) ---
+  # These are the *names* of the secrets, not the values
+  _SECRET_MONGO_URI: 'mongodb-uri'
+  _SECRET_REDIS_URL: 'redis-url'
+  _SECRET_SUPABASE_JWT: 'supabase-jwt-secret'
+  _SECRET_SUPABASE_SVC_KEY: 'supabase-service-role-key'
+
+# Timeout for the entire build
+timeout: '1800s' # 30 minutes total build timeout

@@ -1,0 +1,35 @@
+# Specific requirements for the function deployment
+# Cloud Function framework
+functions-framework>=3.0.0,<4.0.0
+
+# --- Dependencies from data_processing/scripts ---
+# (Combine requirements from all scripts this function might run)
+
+# Core data handling
+pandas>=1.5.0,<2.3.0
+numpy>=1.21.0,<1.27.0
+
+# Downloading data (Script 01)
+requests>=2.28.0,<2.33.0
+
+# Google Cloud Storage interaction (Scripts 01, 02, 03)
+google-cloud-storage>=2.5.0,<2.18.0
+
+# MongoDB interaction (Scripts 02, 03, 04)
+# Use pymongo (sync) as scripts are written synchronously
+pymongo>=4.0.0,<5.0.0
+
+# Embeddings generation (Script 02)
+sentence-transformers>=2.2.0,<3.0.0
+# Specify backend if needed, e.g., torch for CPU/GPU compatibility
+torch>=1.9.0,<2.4.0
+# Or tensorflow>=2.5.0,<2.17.0
+
+# Optional: Redis client (Script 04)
+redis>=4.3.0,<5.1.0
+
+# Optional: Progress bars (used in script examples, but might not display in Cloud Function logs)
+# tqdm>=4.60.0,<5.0.0
+
+# NOTE: python-dotenv is typically NOT needed in Cloud Functions environment
+# as variables are set directly in the function's configuration.
