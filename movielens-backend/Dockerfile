@@ -26,6 +26,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Assumes your FastAPI code is in an 'app' directory and main.py is at the root of 'backend'
 COPY ./app /app/app
 COPY ./main.py /app/main.py
+COPY ./entrypoint.sh /app/entrypoint.sh
+COPY ./debug_import.py /app/debug_import.py
+COPY ./wsgi.py /app/wsgi.py
+# Make the entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
 # Copy other necessary files or directories if they exist at the backend root
 
 # Expose the port the app runs on (matching the Gunicorn bind port)
@@ -41,10 +46,8 @@ EXPOSE 8080
 # Use environment variables for host/port/workers for flexibility
 ENV PYTHONPATH=/app
 ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8080 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
-# CMD gunicorn app.main:app $GUNICORN_CMD_ARGS
-# Or specify directly:
-# Note: We're already in /app directory from the WORKDIR directive above
-CMD ["sh", "-c", "cd /app && gunicorn --bind 0.0.0.0:8080 --workers 2 --worker-class uvicorn.workers.UvicornWorker main:app"]
+# Use the debug entrypoint script
+CMD ["/app/entrypoint.sh"]
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.
