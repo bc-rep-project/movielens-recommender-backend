@@ -13,40 +13,48 @@ ENV PYTHONPATH=/app
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies if needed (e.g., build-essential for C extensions)
-# RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
-# Often not needed if using pre-compiled wheels
+# Install debugging tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    procps \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 # Copy only requirements first to leverage Docker cache
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir pytest pytest-cov
 
 # Copy the rest of the application code into the working directory
 # Assumes your FastAPI code is in an 'app' directory and main.py is at the root of 'backend'
 COPY ./app /app/app/
 COPY ./main.py /app/
-COPY ./package_app.py /app/
-COPY ./simple_entrypoint.sh /app/
+COPY ./run_app.py /app/
 # Make the entrypoint script executable
-RUN chmod +x /app/simple_entrypoint.sh
-# Copy other necessary files or directories if they exist at the backend root
+RUN chmod +x /app/run_app.py && \
+    # Create a startup message for sanity check
+    echo "print('Container is starting up - Python is working!')" > /app/startup_test.py && \
+    # Create a healthcheck endpoint
+    echo "import os,sys,http.server,socketserver\n\
+class HealthHandler(http.server.SimpleHTTPRequestHandler):\n\
+    def do_GET(self):\n\
+        self.send_response(200)\n\
+        self.send_header('Content-type', 'text/plain')\n\
+        self.end_headers()\n\
+        self.wfile.write(b'Container is running')\n\
+\n\
+if __name__ == '__main__':\n\
+    with socketserver.TCPServer(('', 8081), HealthHandler) as httpd:\n\
+        print('Starting healthcheck server on port 8081')\n\
+        httpd.serve_forever()" > /app/healthcheck.py
 
 # Expose the port the app runs on (matching the Gunicorn bind port)
 # Cloud Run expects apps to listen on port 8080 by default
 EXPOSE 8080
 
-# Define the command to run the application using Gunicorn as the process manager
-# and Uvicorn as the worker.
-# -w: Number of workers (adjust based on CPU/memory, can use env var)
-# -k: Worker class
-# --bind: Address and port to bind to (0.0.0.0 to accept external connections)
-# app.main:app: Path to the FastAPI app instance (module:variable)
-# Use environment variables for host/port/workers for flexibility
-ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8080 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
-# Use the debug entrypoint script
-CMD ["/app/simple_entrypoint.sh"]
+# Run the application directly with Python
+CMD ["python3", "-u", "/app/run_app.py"]
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.
