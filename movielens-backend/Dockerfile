@@ -5,8 +5,10 @@ FROM python:3.10-slim
 
 # Set environment variables
 # Prevents Python from writing pyc files to disc (optional)
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+# Ensures Python output is sent straight to terminal (Docker logs) without buffering
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Set the working directory in the container
 WORKDIR /app
@@ -17,21 +19,34 @@ WORKDIR /app
 
 # Install Python dependencies
 # Copy only requirements first to leverage Docker cache
-COPY requirements.txt .
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the working directory
 # Assumes your FastAPI code is in an 'app' directory and main.py is at the root of 'backend'
-COPY . .
+COPY ./app /app/app/
+COPY ./main.py /app/
+COPY ./package_app.py /app/
+COPY ./simple_entrypoint.sh /app/
+# Make the entrypoint script executable
+RUN chmod +x /app/simple_entrypoint.sh
+# Copy other necessary files or directories if they exist at the backend root
 
 # Expose the port the app runs on (matching the Gunicorn bind port)
 # Cloud Run expects apps to listen on port 8080 by default
 EXPOSE 8080
 
-# Start the application
-# Use Gunicorn with Uvicorn workers using the direct path to main.py
-CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "--log-level", "info"]
+# Define the command to run the application using Gunicorn as the process manager
+# and Uvicorn as the worker.
+# -w: Number of workers (adjust based on CPU/memory, can use env var)
+# -k: Worker class
+# --bind: Address and port to bind to (0.0.0.0 to accept external connections)
+# app.main:app: Path to the FastAPI app instance (module:variable)
+# Use environment variables for host/port/workers for flexibility
+ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8080 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
+# Use the debug entrypoint script
+CMD ["/app/simple_entrypoint.sh"]
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.

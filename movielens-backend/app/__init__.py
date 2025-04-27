@@ -1,10 +1,6 @@
 """
-MovieLens Recommender Backend API
+MovieLens Recommender Backend API package
 """
-from fastapi import FastAPI
+__version__ = "0.1.0"
 
-# This empty file makes 'app' a Python package
-# We'll import the FastAPI app through here to simplify imports
-
-# Define version
-__version__ = '0.1.0'
+# Core application code
