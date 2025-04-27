@@ -11,8 +11,7 @@ steps:
         '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:$COMMIT_SHA', # Tag with Artifact Registry path and commit SHA
         '-t',
         '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_IMAGE_NAME}:latest',      # Also tag as latest
-        '--file=backend/Dockerfile', # Specify the Dockerfile location
-        '.',                         # Build context is the root of the repo
+        'movielens-backend',         # Build context is the backend directory
       ]
     # Add timeout if builds take longer
     # timeout: '1200s'
