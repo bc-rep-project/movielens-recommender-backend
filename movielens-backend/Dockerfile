@@ -29,10 +29,8 @@ COPY ./main.py /app/main.py
 # Copy other necessary files or directories if they exist at the backend root
 
 # Expose the port the app runs on (matching the Gunicorn bind port)
-# Cloud Run defaults to 8080, but Gunicorn below uses 8000.
-# You can either change the port here and in Gunicorn, or configure Cloud Run port.
-# Let's use 8000 for this example.
-EXPOSE 8000
+# Cloud Run expects apps to listen on port 8080 by default
+EXPOSE 8080
 
 # Define the command to run the application using Gunicorn as the process manager
 # and Uvicorn as the worker.
@@ -41,10 +39,12 @@ EXPOSE 8000
 # --bind: Address and port to bind to (0.0.0.0 to accept external connections)
 # app.main:app: Path to the FastAPI app instance (module:variable)
 # Use environment variables for host/port/workers for flexibility
-ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8000 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
+ENV PYTHONPATH=/app
+ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8080 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
 # CMD gunicorn app.main:app $GUNICORN_CMD_ARGS
 # Or specify directly:
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "main:app"]
+# Note: We're already in /app directory from the WORKDIR directive above
+CMD ["sh", "-c", "cd /app && gunicorn --bind 0.0.0.0:8080 --workers 2 --worker-class uvicorn.workers.UvicornWorker main:app"]
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.
