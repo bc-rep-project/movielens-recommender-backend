@@ -44,7 +44,7 @@ EXPOSE 8000
 ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:8000 --workers=2 --worker-class=uvicorn.workers.UvicornWorker"
 # CMD gunicorn app.main:app $GUNICORN_CMD_ARGS
 # Or specify directly:
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "app.main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "main:app"]
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.
