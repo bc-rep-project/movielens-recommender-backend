@@ -22,9 +22,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the working directory
-# Assumes your FastAPI code is in an 'app' directory and main.py is at the root of 'backend'
-COPY . .
+# Copy just what we need for a simplified deployment
+COPY application.py .
 
 # Expose the port the app runs on (matching the Gunicorn bind port)
 # Cloud Run expects apps to listen on port 8080 by default
@@ -33,7 +32,7 @@ EXPOSE 8080
 # Start the application
 # Use Gunicorn with Uvicorn workers using the module:app format
 # This approach ensures the Python module system works correctly
-CMD ["gunicorn", "app.server:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "--log-level", "info"]
+CMD exec gunicorn --bind :8080 --workers 1 --worker-class uvicorn.workers.UvicornWorker --threads 8 --timeout 0 application:app
 
 # Note on Workers: The number of workers (e.g., 2) should be tuned.
 # A common starting point is (2 * number_of_cores) + 1.
