@@ -8,131 +8,152 @@ import sys
 import importlib
 import json
 import traceback
+import time
+import base64
 
-# --- Path Setup ---
-# When deployed, the function's root directory contains this main.py.
-# We need to add the 'data_processing' directory (which should be deployed alongside main.py)
-# to the Python path so we can import scripts like 'scripts.01_download_movielens'.
-# This assumes your deployment zip includes the 'scripts' and 'common' directories
-# relative to this main.py file. A common structure might be:
-# deployment.zip/
-#  |- main.py
-#  |- requirements.txt
-#  |- scripts/
-#  |  |- 01_download_movielens.py
-#  |  |- ...
-#  |- common/
-#  |  |- db_connect.py
-#  |  |- ...
-
-# Get the directory containing this main.py file
+# --- Path Setup (Ensure this works for your deployment structure) ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Construct the path to the parent directory (which should contain 'scripts', 'common')
-# If main.py is directly inside data_processing/cloud_function, parent is data_processing
-# If main.py is at the root alongside data_processing dir, adjust accordingly.
-# Assuming main.py is in data_processing/cloud_function:
-data_processing_dir = os.path.dirname(current_dir) # This should be 'data_processing' dir
-
-# Add the data_processing directory to the Python path
+data_processing_dir = os.path.dirname(current_dir)
 if data_processing_dir not in sys.path:
     sys.path.insert(0, data_processing_dir)
     print(f"Added to sys.path: {data_processing_dir}")
-
-# Also add the project root if common utils depend on app models/utils
 project_root = os.path.abspath(os.path.join(data_processing_dir, '..'))
 if project_root not in sys.path:
      sys.path.insert(0, project_root)
      print(f"Added project root to sys.path: {project_root}")
 
+# --- Import common modules AFTER path setup ---
+try:
+    from data_processing.common.storage_client import get_gcs_client, get_gcs_bucket_name, check_gcs_file_exists
+    from data_processing.common.db_connect import get_mongo_database, get_mongo_client
+except ImportError as e:
+    print(f"Error importing common modules: {e}. Check deployment structure.", file=sys.stderr)
+    # Function might still work if only specific scripts are called, but log the error
+    pass  # Allow function to load, but script execution might fail later
 
 # --- Logging Configuration ---
-# Cloud Functions automatically captures stdout/stderr and standard logging
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(),
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    stream=sys.stdout) # Ensure logs go to stdout for Cloud Logging
-logger = logging.getLogger("CloudFunctionWrapper")
+                    stream=sys.stdout)
+logger = logging.getLogger("PipelineCloudFunction")
 
+# --- Environment Variables (Expected to be set in CF config) ---
+GCS_BUCKET_NAME_ENV = "GCS_BUCKET_NAME"
+MONGO_DB_NAME_ENV = "MONGODB_DB_NAME"  # Optional, if needed
+MONGO_MOVIES_COLLECTION_ENV = "MONGO_MOVIES_COLLECTION"
+# Add others needed by the scripts
+MOVIELENS_ZIP_FILENAME = os.environ.get("MOVIELENS_ZIP_FILENAME", "ml-latest-small.zip")
+GCS_DATASET_PATH = os.environ.get("GCS_DATASET_PATH", "datasets/")
 
-# --- Allowed Scripts ---
-# Define which scripts this function is allowed to run for security
-ALLOWED_SCRIPTS = {
-    "01_download": "scripts.01_download_movielens",
-    "02_embeddings": "scripts.02_generate_embeddings",
-    "03_interactions": "scripts.03_load_interactions",
-    "04_update_recs": "scripts.04_update_recommendations",
-}
+# --- Script Modules to Run (in order) ---
+PIPELINE_SCRIPTS = [
+    "scripts.01_download_movielens",
+    "scripts.02_generate_embeddings",
+    "scripts.03_load_interactions",
+]
 
-
-@functions_framework.http # Decorator for HTTP triggered functions
-def run_data_processing_script(request):
+def check_if_pipeline_completed() -> bool:
     """
-    HTTP Cloud Function entry point to trigger a data processing script.
-    Expects a JSON payload with a 'script_key' field specifying which script to run.
-    Example Payload: {"script_key": "02_embeddings"}
+    Checks if the initial data pipeline seems to be completed.
+    This is a simple check, could be made more robust.
+    Checks if the movies collection exists and has documents.
+    """
+    mongo_client = None
+    try:
+        # Check GCS file first (quick check)
+        gcs_client = get_gcs_client()
+        bucket_name = get_gcs_bucket_name()  # Reads from env var
+        gcs_object_name = os.path.join(GCS_DATASET_PATH.strip('/'), MOVIELENS_ZIP_FILENAME)
+        if not check_gcs_file_exists(gcs_object_name, bucket_name, gcs_client):
+             logger.info("Pipeline check: GCS dataset zip file not found. Pipeline likely not run.")
+             return False
+
+        # Check MongoDB movies collection
+        mongo_client = get_mongo_client()
+        db = get_mongo_database(client=mongo_client)  # Reads from env var or URI
+        movies_collection_name = os.environ.get(MONGO_MOVIES_COLLECTION_ENV, "movies")
+
+        # Check if collection exists and has documents efficiently
+        # count_documents is faster than checking list_collection_names + find_one
+        count = db[movies_collection_name].count_documents({}, limit=1)
+
+        if count > 0:
+            logger.info(f"Pipeline check: Found documents in MongoDB collection '{movies_collection_name}'. Assuming pipeline completed.")
+            return True
+        else:
+            logger.info(f"Pipeline check: MongoDB collection '{movies_collection_name}' is empty or doesn't exist. Pipeline likely not run or failed.")
+            return False
+    except Exception as e:
+        logger.error(f"Error during pipeline completion check: {e}", exc_info=True)
+        # Be cautious: if check fails, assume pipeline needs running to be safe
+        return False
+    finally:
+        if mongo_client:
+            mongo_client.close()
+
+
+@functions_framework.cloud_event
+def run_movielens_pipeline(cloud_event):
+    """
+    Pub/Sub triggered Cloud Function to run the initial MovieLens data pipeline.
+    Checks if the pipeline has already run before executing.
     """
     start_time = time.time()
-    logger.info("Cloud Function triggered.")
-
-    # --- Get Script Key from Request ---
-    request_json = request.get_json(silent=True)
-    request_args = request.args
-
-    script_key = None
-    if request_json and 'script_key' in request_json:
-        script_key = request_json['script_key']
-    elif request_args and 'script_key' in request_args:
-        script_key = request_args['script_key']
-
-    if not script_key:
-        logger.error("Missing 'script_key' in request JSON body or query parameters.")
-        return ("Missing 'script_key' in request JSON body or query parameters.", 400)
-
-    logger.info(f"Received request to run script with key: '{script_key}'")
-
-    # --- Validate and Import Script ---
-    if script_key not in ALLOWED_SCRIPTS:
-        logger.error(f"Invalid or disallowed script key provided: '{script_key}'")
-        allowed_keys = ", ".join(ALLOWED_SCRIPTS.keys())
-        return (f"Invalid script_key. Allowed keys: {allowed_keys}", 400)
-
-    module_path = ALLOWED_SCRIPTS[script_key]
-
+    # Decode message data if needed
     try:
-        logger.info(f"Attempting to import module: {module_path}")
-        script_module = importlib.import_module(module_path)
-        logger.info(f"Successfully imported module: {module_path}")
-
-        # Check if the module has a 'main' function
-        if not hasattr(script_module, 'main') or not callable(script_module.main):
-            logger.error(f"Module {module_path} does not have a callable 'main' function.")
-            return (f"Target script {module_path} is missing a main() function.", 500)
-
-        # --- Execute Script's Main Function ---
-        logger.info(f"Executing main() function of {module_path}...")
-        # Note: Environment variables (DB URI, GCS Bucket etc.) should be set
-        # in the Cloud Function's configuration, ideally referencing Secret Manager.
-        # The scripts themselves use os.environ.get() to read them.
-        script_module.main() # Call the main function of the imported script
-        logger.info(f"Successfully executed main() function of {module_path}.")
-
-        duration = time.time() - start_time
-        response_message = f"Successfully executed script: {module_path}"
-        logger.info(f"{response_message} (Duration: {duration:.2f}s)")
-        return (response_message, 200)
-
-    except ModuleNotFoundError as e:
-        logger.error(f"Could not find module {module_path}. Check deployment package structure and sys.path. Error: {e}", exc_info=True)
-        return (f"Internal error: Could not find script module {module_path}.", 500)
-    except ImportError as e:
-         logger.error(f"Import error within {module_path} or its dependencies. Error: {e}", exc_info=True)
-         # Log traceback for debugging import issues within the script
-         logger.error(traceback.format_exc())
-         return (f"Internal error: Import error within script {module_path}.", 500)
+        if cloud_event.data and "message" in cloud_event.data and "data" in cloud_event.data["message"]:
+            message_data_str = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
+            message_data_json = json.loads(message_data_str)
+            logger.info(f"Received trigger message: {message_data_json}")
+        else:
+            logger.info("Received trigger event without detailed message data.")
     except Exception as e:
-        logger.error(f"Error executing main() function of {module_path}: {e}", exc_info=True)
-        # Log traceback for debugging runtime errors within the script
-        logger.error(traceback.format_exc())
-        return (f"Error executing script {module_path}: {e}", 500)
+        logger.warning(f"Could not decode Pub/Sub message data: {e}")
+
+    logger.info("Checking if data pipeline needs to be executed...")
+
+    # --- Idempotency Check ---
+    if check_if_pipeline_completed():
+        logger.info("Pipeline already completed. Exiting function.")
+        return  # Success, nothing to do
+
+    logger.info("Pipeline not completed. Starting execution...")
+
+    # --- Execute Pipeline Scripts Sequentially ---
+    overall_success = True
+    for module_path in PIPELINE_SCRIPTS:
+        script_start_time = time.time()
+        logger.info(f"--- Running script: {module_path} ---")
+        try:
+            script_module = importlib.import_module(module_path)
+            if not hasattr(script_module, 'main') or not callable(script_module.main):
+                logger.error(f"Module {module_path} does not have a callable 'main' function. Skipping.")
+                overall_success = False
+                break  # Stop pipeline if a script is invalid
+
+            # Execute the script's main function
+            # The script's main should handle its own logging and status reporting
+            script_module.main()
+            
+            script_duration = time.time() - script_start_time
+            logger.info(f"--- Finished script: {module_path} (Duration: {script_duration:.2f}s) ---")
+
+        except Exception as e:
+            script_duration = time.time() - script_start_time
+            logger.error(f"--- FAILED script: {module_path} (Duration: {script_duration:.2f}s) ---")
+            logger.error(f"Error executing main() function of {module_path}: {e}", exc_info=True)
+            logger.error(traceback.format_exc())
+            overall_success = False
+            break  # Stop pipeline execution on first failure
+
+    # --- Final Status ---
+    total_duration = time.time() - start_time
+    if overall_success:
+        logger.info(f"Successfully completed full data pipeline execution. (Total Duration: {total_duration:.2f}s)")
+    else:
+        logger.error(f"Data pipeline execution failed. (Total Duration: {total_duration:.2f}s)")
+        # Let the function fail by raising an exception to signal error for potential retries
+        raise RuntimeError("Data pipeline execution failed.")
 
 # --- Example for Pub/Sub Trigger (Alternative) ---
 # import base64

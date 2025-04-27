@@ -32,3 +32,11 @@ python-json-logger>=2.0.0,<2.1.0
 
 # CORS Headers (FastAPI dependency)
 python-multipart>=0.0.5,<0.0.10 # Often needed for form data, included for completeness
+
+# --- NEW DEPENDENCIES ---
+# Supabase Python Client (for direct auth interaction)
+supabase-py>=2.0.0,<2.6.0
+
+# Google Cloud Pub/Sub Client (for triggering pipeline)
+google-cloud-pubsub>=2.13.0,<2.22.0
+# --- END NEW ---
