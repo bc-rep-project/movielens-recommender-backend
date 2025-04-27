@@ -66,6 +66,8 @@ cython_debug/
 
 
 # --- Node.js / Frontend (Next.js/Vercel) ---
+google-cloud-sdk/
+google-cloud-cli-446.0.0-linux-x86_64.tar.gz
 movielens-frontend/
 infra/
 node_modules/
