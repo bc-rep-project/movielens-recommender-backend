@@ -1,0 +1,20 @@
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
+
+# Working directory
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir fastapi uvicorn
+
+# Copy only the inline app file
+COPY inline_app.py .
+
+# Make it executable
+RUN chmod +x /app/inline_app.py
+
+# Run directly
+CMD ["python", "-u", "/app/inline_app.py"] 
