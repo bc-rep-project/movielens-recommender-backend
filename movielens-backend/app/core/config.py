@@ -4,7 +4,7 @@
 import logging
 import os
 from functools import lru_cache
-from typing import List, Optional, Union, Any, Dict
+from typing import List, Optional, Union, Any
 
 from pydantic import (
     AnyHttpUrl,
@@ -38,26 +38,23 @@ class Settings(BaseSettings):
     # --- Database (MongoDB) ---
     # Use SecretStr to prevent accidental logging of the URI
     MONGODB_URI: SecretStr = Field(..., validation_alias="MONGODB_URI")
-    MONGODB_DB_NAME: str = Field("movielens", validation_alias="MONGODB_DB_NAME")
+    # Optional: Specify DB name if not in URI or want to override
+    # MONGODB_DB_NAME: str = Field("movielens_db", validation_alias="MONGODB_DB_NAME")
 
     # --- Cache (Redis) ---
-    REDIS_URL: Optional[SecretStr] = Field(None, validation_alias="REDIS_URL")
+    REDIS_URL: SecretStr = Field(..., validation_alias="REDIS_URL")
     # Optional: Validate as RedisDsn if using pydantic's built-in DSN types
     # REDIS_URL: RedisDsn = Field(..., validation_alias="REDIS_URL")
 
     # --- Authentication (Supabase) ---
     SUPABASE_URL: AnyHttpUrl = Field(..., validation_alias="SUPABASE_URL")
-    SUPABASE_ANON_KEY: SecretStr = Field(..., validation_alias="SUPABASE_ANON_KEY")
-    SUPABASE_SERVICE_ROLE_KEY: Optional[SecretStr] = Field(None, validation_alias="SUPABASE_SERVICE_ROLE_KEY")
-    SUPABASE_JWT_SECRET: SecretStr = Field(..., validation_alias="SUPABASE_JWT_SECRET")
+    # SUPABASE_ANON_KEY: Optional[SecretStr] = Field(None, validation_alias="SUPABASE_ANON_KEY") # Likely not needed backend
+    SUPABASE_SERVICE_ROLE_KEY: Optional[SecretStr] = Field(None, validation_alias="SUPABASE_SERVICE_ROLE_KEY") # Needed for admin actions
+    SUPABASE_JWT_SECRET: SecretStr = Field(..., validation_alias="SUPABASE_JWT_SECRET") # CRITICAL for verifying user tokens
     JWT_ALGORITHM: str = Field("HS256", validation_alias="JWT_ALGORITHM")
     JWT_AUDIENCE: str = Field("authenticated", validation_alias="JWT_AUDIENCE")
     # Optional: Validate issuer if needed
     # JWT_ISSUER: Optional[str] = Field(None, validation_alias="JWT_ISSUER")
-
-    # --- NEW: Pub/Sub for Triggering Pipeline ---
-    GCP_PROJECT_ID: Optional[str] = Field(None, validation_alias="GCP_PROJECT_ID")
-    PIPELINE_TRIGGER_TOPIC_ID: Optional[str] = Field(None, validation_alias="PIPELINE_TRIGGER_TOPIC_ID")
 
     # --- Embeddings (Hugging Face) ---
     HF_MODEL_NAME: str = Field(
@@ -66,12 +63,12 @@ class Settings(BaseSettings):
     )
 
     # --- Storage (GCS) ---
-    GCS_BUCKET_NAME: str = Field(..., validation_alias="GCS_BUCKET_NAME")
+    GCS_BUCKET_NAME: Optional[str] = Field(None, validation_alias="GCS_BUCKET_NAME")
 
     # --- CORS ---
     # Expects a comma-separated string in env var like "http://localhost:3000,https://*.example.com"
     BACKEND_CORS_ORIGINS: List[str] = Field(
-        ["*"],  # Default to allow all for development
+        default=["*"], # Allows all origins by default - CHANGE FOR PRODUCTION!
         validation_alias="BACKEND_CORS_ORIGINS"
     )
 
