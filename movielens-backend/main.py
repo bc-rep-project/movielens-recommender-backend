@@ -1,74 +1,79 @@
 #!/usr/bin/env python3
 """
-Backup implementation for main.py using Python's built-in web server
-if the original FastAPI app fails to load.
+Main entry point for the MovieLens Recommender API
+This file is intended to be imported as a module by Gunicorn
+or run directly to start a development server.
 """
 import os
-import sys
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
-# Set up basic logging
-logging.basicConfig(level="INFO", format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("main")
+# Import router and initialization functions
+from app.api.api import api_router
+from app.api.deps import initialize_connections, close_connections
+from app.core.config import settings
 
-# Constants
-PORT = int(os.environ.get("PORT", "8080"))
-HOST = "0.0.0.0"
+# Configure logging
+logging.basicConfig(
+    level=settings.LOG_LEVEL,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-logger.info(f"Fallback server starting on {HOST}:{PORT}")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Setup and teardown operations for the application.
+    This is called when the application starts and stops.
+    """
+    # Startup: initialize MongoDB and Redis connections
+    logger.info("Starting up MovieLens Recommender API...")
+    await initialize_connections()
+    yield
+    # Shutdown: close connections
+    logger.info("Shutting down MovieLens Recommender API...")
+    await close_connections()
 
-class SimpleHandler(BaseHTTPRequestHandler):
-    def _set_headers(self, content_type="application/json", status=200):
-        self.send_response(status)
-        self.send_header("Content-type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-    
-    def do_GET(self):
-        try:
-            if self.path == "/" or self.path == "":
-                self._set_headers()
-                response = {
-                    "message": "Welcome to MovieLens Recommender API v1.1.0"
-                }
-                self.wfile.write(json.dumps(response).encode())
-            elif self.path == "/health":
-                self._set_headers()
-                response = {"status": "ok"}
-                self.wfile.write(json.dumps(response).encode())
-else:
-                self._set_headers(status=404)
-                response = {"error": "Not found", "path": self.path}
-                self.wfile.write(json.dumps(response).encode())
-        except Exception as e:
-            logger.error(f"Error handling request: {e}")
-            self._set_headers(status=500)
-            response = {"error": str(e)}
-            self.wfile.write(json.dumps(response).encode())
-    
-    def log_message(self, format, *args):
-        logger.info(f"{self.address_string()} - {format % args}")
+# Create FastAPI application
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    description="MovieLens Recommender API provides movie recommendations based on content and collaborative filtering",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
 
-# Create a simple FastAPI-compatible app object
-class DummyApp:
-    def __call__(self, scope, receive, send):
-        # This is just a placeholder to make it look like a FastAPI/ASGI app
-        # It's never actually used because we run the HTTP server directly
-        pass
-app = DummyApp()
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# The application will run from here directly
-def run_server():
-    try:
-        logger.info("Starting HTTP server")
-        server = HTTPServer((HOST, PORT), SimpleHandler)
-        server.serve_forever()
-    except Exception as e:
-        logger.critical(f"Server error: {e}")
-        sys.exit(1)
+# Include API router
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# Direct execution (similar to FastAPI apps)
+@app.get("/")
+async def root():
+    """Root endpoint for basic health check"""
+    return {"message": f"Welcome to {settings.PROJECT_NAME} v{settings.VERSION}"}
+
+# This is used when running the app directly (for development)
 if __name__ == "__main__":
-    run_server()
+    import uvicorn
+    
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Starting development server on port {port}")
+    
+    uvicorn.run(
+        "main:app",  # Import string for the app variable in this file
+        host="0.0.0.0",
+        port=port,
+        reload=True,  # Enable auto-reload for development
+        log_level=settings.LOG_LEVEL.lower(),
+    )
