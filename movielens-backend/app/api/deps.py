@@ -190,6 +190,39 @@ async def get_current_active_user_id(
     return user_id
 
 
+# --- Service Dependencies ---
+
+async def get_dataset_service():
+    """
+    FastAPI dependency that provides a DatasetService instance.
+    
+    This service manages dataset downloads, storage, and processing.
+    """
+    from app.services.dataset_service import DatasetService
+    
+    # Get required dependencies
+    db = await anext(get_db())
+    redis_instance = await anext(get_redis()) if redis_client else None
+    
+    # Create and return the service
+    return DatasetService(mongodb_client=db.client, redis_client=redis_instance)
+
+async def get_model_service():
+    """
+    FastAPI dependency that provides a ModelService instance.
+    
+    This service manages model training, storage, and activation.
+    """
+    from app.services.model_service import ModelService
+    
+    # Get required dependencies
+    db = await anext(get_db())
+    redis_instance = await anext(get_redis()) if redis_client else None
+    
+    # Create and return the service
+    return ModelService(mongodb_client=db.client, redis_client=redis_instance)
+
+
 # --- How to use lifespan events in main.py ---
 #
 # from contextlib import asynccontextmanager

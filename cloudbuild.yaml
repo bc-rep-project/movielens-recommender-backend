@@ -74,7 +74,7 @@ steps:
 
         # --- Environment Variables (Non-Secret) ---
         # Format: KEY1=value1,KEY2=value2,...
-        '--set-env-vars=^##^LOG_LEVEL=${_LOG_LEVEL}##SUPABASE_URL=${_SUPABASE_URL}##HF_MODEL_NAME=${_HF_MODEL_NAME}##GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}##JWT_ALGORITHM=HS256##JWT_AUDIENCE=authenticated##PYTHON_ENTRYPOINT=/app/server.py',
+        '--set-env-vars=^##^LOG_LEVEL=${_LOG_LEVEL}##SUPABASE_URL=${_SUPABASE_URL}##HF_MODEL_NAME=${_HF_MODEL_NAME}##GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}##JWT_ALGORITHM=HS256##JWT_AUDIENCE=authenticated',
         # Using ^##^ as delimiter for set-env-vars
 
         # --- Networking / Access ---

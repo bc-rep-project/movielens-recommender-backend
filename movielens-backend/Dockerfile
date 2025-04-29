@@ -1,25 +1,13 @@
 FROM python:3.10-slim
 
-# Set environment variables
-ENV PORT=8080
-ENV PYTHONUNBUFFERED=1
-
-# Working directory
 WORKDIR /app
+COPY minimal_server.py .
 
-# Copy just the inline app and requirements
-COPY inline_app.py /app/
-COPY requirements.txt /app/
+# Install pymongo for database connectivity
+RUN pip install --no-cache-dir pymongo
 
-# Install dependencies
-RUN pip install --no-cache-dir fastapi uvicorn 
-RUN pip install --no-cache-dir -r requirements.txt
+# Make script executable
+RUN chmod +x /app/minimal_server.py
 
-# Make the script executable
-RUN chmod +x /app/inline_app.py
-
-# Expose the port
 EXPOSE 8080
-
-# Run the inline app directly
-CMD ["python", "-u", "/app/inline_app.py"] 
+CMD ["python", "-u", "/app/minimal_server.py"]

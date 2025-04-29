@@ -21,4 +21,4 @@ RUN chmod +x /app/web_server.py
 EXPOSE 8080
 
 # Run the standalone web server directly
-CMD ["python", "-u", "/app/web_server.py"] 
+CMD ["python", "-u", "/app/web_server.py"]

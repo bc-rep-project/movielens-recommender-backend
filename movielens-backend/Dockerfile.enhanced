@@ -1,0 +1,19 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy the enhanced server and requirements
+COPY enhanced_server.py .
+COPY requirements.txt .
+
+# Install MongoDB client dependency
+RUN pip install --no-cache-dir pymongo
+
+# Make the script executable
+RUN chmod +x /app/enhanced_server.py
+
+# Expose the port
+EXPOSE 8080
+
+# Run the enhanced server
+CMD ["python", "-u", "/app/enhanced_server.py"] 

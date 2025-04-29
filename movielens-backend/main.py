@@ -38,7 +38,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self._set_headers()
                 response = {"status": "ok"}
                 self.wfile.write(json.dumps(response).encode())
-            else:
+else:
                 self._set_headers(status=404)
                 response = {"error": "Not found", "path": self.path}
                 self.wfile.write(json.dumps(response).encode())

@@ -74,6 +74,7 @@ node_modules/
 .next/
 out/
 build/ # General build output directory
+deploy/
 
 # Logs
 logs
@@ -100,6 +101,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Optional dependency cache from pnpm
 .pnpm-store/
 
+# Scripts
+*.sh
 
 # --- IDE / Editor Configuration ---
 # VSCode
@@ -189,3 +192,6 @@ data/ # If you have a local data directory you don't want to commit
 # Temporary files created by tools
 *.swp
 *~
+*.sh
+
+deploy/

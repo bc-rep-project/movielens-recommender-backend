@@ -17,8 +17,24 @@ motor>=3.1.0,<3.5.0
 # Cache (Async Redis Driver)
 redis>=4.5.0,<5.1.0
 
+# HTTP Client
+aiohttp>=3.8.5,<3.9.0
+
+# Cloud Storage (S3/GCS compatible)
+aioboto3>=11.3.0,<12.0.0
+
+# Machine Learning / Data Processing
+numpy>=1.21.0,<1.27.0
+pandas>=2.0.0,<2.1.0
+scikit-learn>=1.3.0,<1.4.0
+tensorflow==2.12.0  # Specified version for stability and compatibility
+sentence-transformers>=2.2.2,<2.3.0
+
 # Environment variable loading (useful for local dev, optional in container)
 python-dotenv>=1.0.0,<1.1.0
+
+# Data parsing
+zipfile36>=0.1.3  # Needed if using Python < 3.8
 
 # Structured Logging (optional but recommended for Cloud Logging)
 python-json-logger>=2.0.0,<2.1.0

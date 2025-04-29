@@ -61,9 +61,59 @@ class Settings(BaseSettings):
         "sentence-transformers/all-MiniLM-L6-v2",
         validation_alias="HF_MODEL_NAME"
     )
-
-    # --- Storage (GCS) ---
+    
+    # --- Dataset Settings ---
+    SUPPORTED_DATASETS: List[str] = Field(
+        default=["ml-latest-small", "ml-25m"],
+        validation_alias="SUPPORTED_DATASETS"
+    )
+    
+    # --- Storage (S3/GCS) ---
     GCS_BUCKET_NAME: Optional[str] = Field(None, validation_alias="GCS_BUCKET_NAME")
+    STORAGE_ENDPOINT_URL: Optional[str] = Field(
+        None, 
+        validation_alias="STORAGE_ENDPOINT_URL",
+        description="Endpoint for S3-compatible storage. Use None for GCS."
+    )
+    STORAGE_ACCESS_KEY: Optional[SecretStr] = Field(
+        None,
+        validation_alias="STORAGE_ACCESS_KEY",
+        description="Access key for S3-compatible storage. Use None for GCS with default credentials."
+    )
+    STORAGE_SECRET_KEY: Optional[SecretStr] = Field(
+        None,
+        validation_alias="STORAGE_SECRET_KEY",
+        description="Secret key for S3-compatible storage. Use None for GCS with default credentials."
+    )
+    
+    # --- Model Training ---
+    MAX_TRAINING_TIME_SECONDS: int = Field(
+        default=300,  # 5 minutes max for Cloud Run free tier
+        validation_alias="MAX_TRAINING_TIME_SECONDS",
+        description="Maximum allowed training time in seconds to prevent Cloud Run timeout"
+    )
+    MAX_MEMORY_USAGE_MB: int = Field(
+        default=400,  # 400MB max for 512MB Cloud Run instance
+        validation_alias="MAX_MEMORY_USAGE_MB",
+        description="Maximum memory usage for training to prevent OOM errors"
+    )
+    OFFLOAD_LARGE_TASKS: bool = Field(
+        default=True,
+        validation_alias="OFFLOAD_LARGE_TASKS",
+        description="Whether to offload large tasks to external services (Cloud Functions)"
+    )
+    
+    # --- Cache Settings ---
+    CACHE_TTL_RECOMMENDATIONS: int = Field(
+        default=3600,  # 1 hour
+        validation_alias="CACHE_TTL_RECOMMENDATIONS",
+        description="Time-to-live for cached recommendations in seconds"
+    )
+    CACHE_TTL_MODELS: int = Field(
+        default=86400,  # 24 hours
+        validation_alias="CACHE_TTL_MODELS",
+        description="Time-to-live for cached model metadata in seconds"
+    )
 
     # --- CORS ---
     # Expects a comma-separated string in env var like "http://localhost:3000,https://*.example.com"
@@ -84,6 +134,16 @@ class Settings(BaseSettings):
         if v == "*":
             return ["*"]
         raise ValueError(f"Invalid BACKEND_CORS_ORIGINS format: {v}")
+
+    @field_validator("SUPPORTED_DATASETS", mode='before')
+    @classmethod
+    def assemble_supported_datasets(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            # If it's a string from env var, split by comma and strip whitespace
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return v
+        return ["ml-latest-small"]  # Default dataset
 
     # Pydantic V2 uses model_config dictionary
     model_config = SettingsConfigDict(
