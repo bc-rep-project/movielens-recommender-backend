@@ -1,0 +1,25 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy the entire application
+COPY . .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Make scripts executable
+RUN chmod +x run.py startup_check.py
+
+# Make sure the application directory is in the Python path
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+# Expose the port the app runs on
+EXPOSE 8080
+
+# Create a startup script that runs the diagnostic check and then the application
+RUN echo '#!/bin/bash\npython /app/startup_check.py\npython /app/run.py' > /app/start.sh && \
+    chmod +x /app/start.sh
+
+# Using the startup script as the entry point
+CMD ["/app/start.sh"] 

@@ -31,6 +31,20 @@ Before the GitHub Actions workflow can deploy to Cloud Run, you need to set up t
 4. Create a JSON key for this service account.
 5. Copy the entire content of the JSON key file and add it as the `GCP_SA_KEY` secret in GitHub.
 
+## Module Import Issues in Cloud Run
+
+If you encounter a "ModuleNotFoundError: No module named 'main'" error in Cloud Run, we've implemented the following solutions:
+
+1. **Enhanced Dockerfile**: Our deployment now uses a more robust approach that properly sets the Python path.
+
+2. **Alternative Entry Point**: We've created a `run.py` script that handles Python path issues and can fall back to a simplified version if needed.
+
+3. **Diagnostic Tools**: The deployment includes:
+   - `startup_check.py` to diagnose environment issues
+   - `main_simple.py` as a fallback implementation with minimal dependencies
+
+These changes ensure that the application can start even if there are issues with the Python module path in Cloud Run.
+
 ## Local Development
 
 ### Prerequisites
