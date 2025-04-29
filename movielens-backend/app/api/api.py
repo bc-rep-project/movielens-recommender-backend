@@ -14,7 +14,8 @@ api_router.include_router(movies.router, prefix="/movies", tags=["Movies"])
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 api_router.include_router(interactions.router, prefix="/interactions", tags=["Interactions"])
 api_router.include_router(datasets.router, prefix="/data", tags=["Datasets"])
-api_router.include_router(models.router, prefix="/data", tags=["Models"])
+api_router.include_router(models.router, prefix="/models", tags=["Models"])
 
-# Admin endpoints
-api_router.include_router(models.router, prefix="/admin", tags=["Admin"]) 
+# Note: The models router should not be included twice. The admin endpoints 
+# in models.py already have "/admin/" in their paths, so they will be properly
+# routed through the single router inclusion above. 

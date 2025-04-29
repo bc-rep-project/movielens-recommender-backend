@@ -1,13 +1,15 @@
 FROM python:3.10-slim
 
 WORKDIR /app
-COPY minimal_server.py .
 
-# Install pymongo for database connectivity
-RUN pip install --no-cache-dir pymongo
+# Copy the entire application
+COPY . .
 
-# Make script executable
-RUN chmod +x /app/minimal_server.py
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Expose the port the app runs on
 EXPOSE 8080
-CMD ["python", "-u", "/app/minimal_server.py"]
+
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -9,7 +9,10 @@ from ..deps import get_dataset_service, get_current_user, get_current_active_use
 
 router = APIRouter()
 
-@router.get("/datasets", response_model=List[DatasetInfo])
+@router.get(
+    "/datasets", 
+    response_model=List[DatasetInfo]
+)
 async def get_available_datasets(
     dataset_service: DatasetService = Depends(get_dataset_service),
     current_user = Depends(get_current_active_user)
@@ -19,7 +22,10 @@ async def get_available_datasets(
     """
     return await dataset_service.list_datasets()
 
-@router.post("/datasets/{dataset_name}/download", response_model=DatasetDownloadStatus)
+@router.post(
+    "/datasets/{dataset_name}/download", 
+    response_model=DatasetDownloadStatus
+)
 async def download_dataset(
     dataset_name: str,
     background_tasks: BackgroundTasks,
@@ -66,7 +72,10 @@ async def download_dataset(
     
     return download_job
 
-@router.get("/jobs/{job_id}", response_model=DatasetDownloadStatus)
+@router.get(
+    "/jobs/{job_id}", 
+    response_model=DatasetDownloadStatus
+)
 async def get_job_status(
     job_id: str,
     dataset_service: DatasetService = Depends(get_dataset_service),

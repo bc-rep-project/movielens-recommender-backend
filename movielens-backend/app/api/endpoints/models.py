@@ -9,7 +9,10 @@ from ..deps import get_model_service, get_current_active_user
 
 router = APIRouter()
 
-@router.get("/models", response_model=List[ModelInfo])
+@router.get(
+    "", 
+    response_model=List[ModelInfo]
+)
 async def get_available_models(
     model_service: ModelService = Depends(get_model_service),
     current_user = Depends(get_current_active_user)
@@ -19,7 +22,10 @@ async def get_available_models(
     """
     return await model_service.list_models()
 
-@router.post("/models/train", response_model=TrainingJob)
+@router.post(
+    "/train", 
+    response_model=TrainingJob
+)
 async def train_model(
     training_request: TrainingRequest,
     background_tasks: BackgroundTasks,
@@ -51,7 +57,10 @@ async def train_model(
     
     return training_job
 
-@router.get("/models/{model_id}", response_model=ModelInfo)
+@router.get(
+    "/{model_id}", 
+    response_model=ModelInfo
+)
 async def get_model_details(
     model_id: str,
     model_service: ModelService = Depends(get_model_service),
@@ -69,7 +78,10 @@ async def get_model_details(
     
     return model
 
-@router.put("/models/{model_id}/activate", response_model=ModelInfo)
+@router.put(
+    "/{model_id}/activate", 
+    response_model=ModelInfo
+)
 async def activate_model(
     model_id: str,
     model_service: ModelService = Depends(get_model_service),
@@ -87,7 +99,10 @@ async def activate_model(
     
     return updated_model
 
-@router.get("/admin/retraining-jobs/{job_id}", response_model=TrainingJob)
+@router.get(
+    "/admin/retraining-jobs/{job_id}", 
+    response_model=TrainingJob
+)
 async def get_training_job_status(
     job_id: str,
     model_service: ModelService = Depends(get_model_service),
@@ -109,7 +124,10 @@ async def get_training_job_status(
     
     return job
 
-@router.post("/admin/retrain-model", response_model=TrainingJob)
+@router.post(
+    "/admin/retrain-model", 
+    response_model=TrainingJob
+)
 async def admin_retrain_model(
     training_request: TrainingRequest,
     background_tasks: BackgroundTasks,
