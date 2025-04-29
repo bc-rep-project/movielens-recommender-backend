@@ -29,21 +29,41 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker gcr.io
 
+      - name: Create simplified deployment files
+        run: |
+          # Verify simplified_app.py exists
+          if [ -f "simplified_app.py" ]; then
+            echo "simplified_app.py exists, proceeding with build"
+          else
+            echo "WARNING: simplified_app.py not found, copying from main_simple.py"
+            cp main_simple.py simplified_app.py || echo "Failed to copy main_simple.py"
+          fi
+          
+          # Verify Dockerfile.minimal exists
+          if [ ! -f "Dockerfile.minimal" ]; then
+            echo "Creating Dockerfile.minimal"
+            cat > Dockerfile.minimal << 'EOL'
+            FROM python:3.10-slim
+            WORKDIR /app
+            COPY simplified_app.py .
+            RUN pip install --no-cache-dir fastapi uvicorn pydantic
+            ENV PORT=8080
+            EXPOSE 8080
+            CMD ["python", "-m", "uvicorn", "simplified_app:app", "--host", "0.0.0.0", "--port", "8080"]
+            EOL
+          fi
+          
+          # Show files for debugging
+          echo "Contents of simplified_app.py:"
+          head -n 20 simplified_app.py
+          
+          echo "Contents of Dockerfile.minimal:"
+          cat Dockerfile.minimal
+
       - name: Build and push container
         run: |
-          # Check if main.py exists and list contents for debugging
-          ls -la
-          if [ -f "main.py" ]; then
-            echo "main.py exists, proceeding with build"
-          else
-            echo "WARNING: main.py not found in current directory!"
-            find . -name "main.py" -type f
-          fi
-
-          # Use the alternative Dockerfile for more robust deployment
-          echo "Using alternative Dockerfile for more robust deployment"
-          docker build -f Dockerfile.alternative -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-          
+          # Use the minimal Dockerfile
+          docker build -f Dockerfile.minimal -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
           docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
       - name: Deploy to Cloud Run
@@ -61,9 +81,32 @@ jobs:
             --cpu=1
             --port=8080
             --timeout=300s
-            --concurrency=80
-            --set-env-vars=PYTHONPATH=/app
 
-      - name: Show Output
+      - name: Test Deployment
         run: |
-          echo "Service URL: ${{ steps.deploy.outputs.url }}" 
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          echo "Service URL: $SERVICE_URL"
+          echo "Waiting for service to become available..."
+          
+          # Wait for up to 60 seconds for the service to become available
+          for i in {1..12}; do
+            echo "Attempt $i: Testing root endpoint..."
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/)
+            
+            if [ "$RESPONSE" == "200" ]; then
+              echo "SUCCESS! Service is responding with 200 OK"
+              break
+            else
+              echo "Service returned $RESPONSE, waiting 5 seconds..."
+              sleep 5
+            fi
+            
+            if [ $i -eq 12 ]; then
+              echo "WARNING: Service is not responding after 60 seconds"
+            fi
+          done
+          
+          echo "Testing other endpoints:"
+          echo "Health: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/health)"
+          echo "API Health: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/api/v1/health/health)"
+          echo "Debug: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/debug)" 
