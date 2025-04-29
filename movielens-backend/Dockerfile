@@ -1,24 +1,21 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
+# Set working directory
 WORKDIR /app
 
-# Copy the entire application
-COPY . .
+# Copy application code and requirements
+COPY main.py .
+COPY requirements-minimal.txt requirements.txt
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make run.py executable
-RUN chmod +x run.py
+# Configure for Cloud Run
+ENV PORT=8080
+ENV PYTHONUNBUFFERED=TRUE
 
-# Make sure the application directory is in the Python path
-ENV PYTHONPATH="/app:${PYTHONPATH}"
-
-# Expose the port the app runs on
+# Expose port for Cloud Run
 EXPOSE 8080
 
-# Command to run the application
-# Primary approach: Run uvicorn through python -m for proper module resolution
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
-# Alternative approach (if needed): Use run.py as a fallback
-# CMD ["python", "run.py"]
+# Use Gunicorn as the entry point
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app

@@ -29,41 +29,37 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker gcr.io
 
-      - name: Create simplified deployment files
+      - name: Verify deployment files
         run: |
-          # Verify simplified_app.py exists
-          if [ -f "simplified_app.py" ]; then
-            echo "simplified_app.py exists, proceeding with build"
+          echo "Verifying main.py exists..."
+          if [ -f "main.py" ]; then
+            echo "✅ main.py exists"
           else
-            echo "WARNING: simplified_app.py not found, copying from main_simple.py"
-            cp main_simple.py simplified_app.py || echo "Failed to copy main_simple.py"
+            echo "❌ main.py not found"
+            exit 1
           fi
           
-          # Verify Dockerfile.minimal exists
-          if [ ! -f "Dockerfile.minimal" ]; then
-            echo "Creating Dockerfile.minimal"
-            cat > Dockerfile.minimal << 'EOL'
-            FROM python:3.10-slim
-            WORKDIR /app
-            COPY simplified_app.py .
-            RUN pip install --no-cache-dir fastapi uvicorn pydantic
-            ENV PORT=8080
-            EXPOSE 8080
-            CMD ["python", "-m", "uvicorn", "simplified_app:app", "--host", "0.0.0.0", "--port", "8080"]
-            EOL
+          echo "Verifying Dockerfile exists..."
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile exists"
+          else
+            echo "❌ Dockerfile not found"
+            exit 1
           fi
           
-          # Show files for debugging
-          echo "Contents of simplified_app.py:"
-          head -n 20 simplified_app.py
+          echo "Verifying requirements-minimal.txt exists..."
+          if [ -f "requirements-minimal.txt" ]; then
+            echo "✅ requirements-minimal.txt exists"
+          else
+            echo "❌ requirements-minimal.txt not found"
+            exit 1
+          fi
           
-          echo "Contents of Dockerfile.minimal:"
-          cat Dockerfile.minimal
+          echo "All required files exist. Proceeding with build..."
 
       - name: Build and push container
         run: |
-          # Use the minimal Dockerfile
-          docker build -f Dockerfile.minimal -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+          docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
           docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
       - name: Deploy to Cloud Run
@@ -81,6 +77,7 @@ jobs:
             --cpu=1
             --port=8080
             --timeout=300s
+            --update-env-vars=PYTHONUNBUFFERED=TRUE
 
       - name: Test Deployment
         run: |
@@ -91,22 +88,21 @@ jobs:
           # Wait for up to 60 seconds for the service to become available
           for i in {1..12}; do
             echo "Attempt $i: Testing root endpoint..."
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/)
+            RESPONSE=$(curl -s -o response.txt -w "%{http_code}" $SERVICE_URL/)
             
             if [ "$RESPONSE" == "200" ]; then
               echo "SUCCESS! Service is responding with 200 OK"
+              echo "Response:"
+              cat response.txt
               break
             else
               echo "Service returned $RESPONSE, waiting 5 seconds..."
+              echo "Response:"
+              cat response.txt
               sleep 5
             fi
             
             if [ $i -eq 12 ]; then
               echo "WARNING: Service is not responding after 60 seconds"
             fi
-          done
-          
-          echo "Testing other endpoints:"
-          echo "Health: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/health)"
-          echo "API Health: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/api/v1/health/health)"
-          echo "Debug: $(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/debug)" 
+          done 

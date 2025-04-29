@@ -1,79 +1,138 @@
-#!/usr/bin/env python3
 """
-Main entry point for the MovieLens Recommender API
-This file is intended to be imported as a module by Gunicorn
-or run directly to start a development server.
+Main entry point for the MovieLens Recommender API - Cloud Run Compatible Version.
+This version is specifically designed to work with Cloud Run's default Gunicorn setup.
 """
 import os
-import logging
-from fastapi import FastAPI
+import json
+import datetime
+from typing import List, Dict, Any, Optional
+
+from fastapi import FastAPI, Query, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from pydantic import BaseModel
 
-# Import router and initialization functions
-from app.api.api import api_router
-from app.api.deps import initialize_connections, close_connections
-from app.core.config import settings
+# Sample data for testing
+SAMPLE_MOVIES = [
+    {"id": "tt0111161", "title": "The Shawshank Redemption", "year": 1994, "genres": ["Drama"]},
+    {"id": "tt0068646", "title": "The Godfather", "year": 1972, "genres": ["Crime", "Drama"]},
+    {"id": "tt0468569", "title": "The Dark Knight", "year": 2008, "genres": ["Action", "Crime", "Drama"]},
+    {"id": "tt0071562", "title": "The Godfather: Part II", "year": 1974, "genres": ["Crime", "Drama"]},
+    {"id": "tt0050083", "title": "12 Angry Men", "year": 1957, "genres": ["Crime", "Drama"]},
+]
 
-# Configure logging
-logging.basicConfig(
-    level=settings.LOG_LEVEL,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Setup and teardown operations for the application.
-    This is called when the application starts and stops.
-    """
-    # Startup: initialize MongoDB and Redis connections
-    logger.info("Starting up MovieLens Recommender API...")
-    await initialize_connections()
-    yield
-    # Shutdown: close connections
-    logger.info("Shutting down MovieLens Recommender API...")
-    await close_connections()
-
-# Create FastAPI application
+# Create application
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description="MovieLens Recommender API provides movie recommendations based on content and collaborative filtering",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan,
+    title="MovieLens Recommender API",
+    version="1.1.0",
+    description="MovieLens Recommender API for Cloud Run",
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API router
-app.include_router(api_router, prefix=settings.API_V1_STR)
+# Pydantic models
+class Movie(BaseModel):
+    id: str
+    title: str
+    year: int
+    genres: List[str]
+
+class MovieList(BaseModel):
+    items: List[Movie]
+    total: int
+    page: int
+    page_size: int
+
+class HealthResponse(BaseModel):
+    status: str = "ok"
+    timestamp: str = datetime.datetime.now().isoformat()
 
 @app.get("/")
 async def root():
     """Root endpoint for basic health check"""
-    return {"message": f"Welcome to {settings.PROJECT_NAME} v{settings.VERSION}"}
+    return {"message": "Welcome to MovieLens Recommender API", "status": "running"}
 
-# This is used when running the app directly (for development)
-if __name__ == "__main__":
-    import uvicorn
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    return HealthResponse()
+
+@app.get("/api/v1/health/health", response_model=HealthResponse)
+async def api_health():
+    """API health check endpoint"""
+    return HealthResponse()
+
+@app.get("/api/v1/movies", response_model=MovieList)
+async def list_movies(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=50, description="Results per page"),
+    genre: Optional[str] = Query(None, description="Filter by genre")
+):
+    """List movies with pagination and optional genre filter"""
+    filtered_movies = SAMPLE_MOVIES
     
-    port = int(os.environ.get("PORT", 8080))
-    logger.info(f"Starting development server on port {port}")
+    # Apply genre filter if provided
+    if genre:
+        filtered_movies = [m for m in filtered_movies if genre in m["genres"]]
     
-    uvicorn.run(
-        "main:app",  # Import string for the app variable in this file
-        host="0.0.0.0",
-        port=port,
-        reload=True,  # Enable auto-reload for development
-        log_level=settings.LOG_LEVEL.lower(),
-    )
+    # Apply pagination
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_movies = filtered_movies[start_idx:end_idx]
+    
+    return {
+        "items": paginated_movies,
+        "total": len(filtered_movies),
+        "page": page,
+        "page_size": limit
+    }
+
+@app.get("/api/v1/movies/{movie_id}", response_model=Movie)
+async def get_movie(
+    movie_id: str = Path(..., description="The ID of the movie to retrieve")
+):
+    """Get details for a specific movie"""
+    for movie in SAMPLE_MOVIES:
+        if movie["id"] == movie_id:
+            return movie
+    
+    raise HTTPException(status_code=404, detail=f"Movie with ID {movie_id} not found")
+
+@app.get("/api/v1/recommendations/item/{movie_id}")
+async def get_similar_movies(
+    movie_id: str = Path(..., description="The ID of the movie to get recommendations for"),
+    limit: int = Query(5, ge=1, le=20, description="Number of recommendations to return")
+):
+    """Get movies similar to a specified movie"""
+    # Check if movie exists
+    movie_exists = any(m["id"] == movie_id for m in SAMPLE_MOVIES)
+    if not movie_exists:
+        raise HTTPException(status_code=404, detail=f"Movie with ID {movie_id} not found")
+    
+    # Return some sample movies (excluding the requested one)
+    recommendations = [m for m in SAMPLE_MOVIES if m["id"] != movie_id][:limit]
+    
+    return {"recommendations": recommendations}
+
+@app.get("/debug")
+async def debug():
+    """Debug endpoint that returns various information about the environment"""
+    try:
+        return {
+            "environment": dict(os.environ),
+            "current_directory": os.getcwd(),
+            "directory_contents": os.listdir(),
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# For WSGI servers (like Gunicorn's default)
+# This is needed for Cloud Run's default startup
+wsgi_app = app
